@@ -1,0 +1,6 @@
+build/
+install/
+log/
+__pycache__/
+*.pyc
+src/global_planner/waypoints/_planner_cache.npz
