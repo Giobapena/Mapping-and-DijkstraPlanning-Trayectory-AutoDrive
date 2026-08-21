@@ -1,7 +1,5 @@
 # Mapeo y Planificación Global de Trayectorias en AutoDRIVE — Dijkstra + Suavizado B-Spline
 
-Proyecto desarrollado en el marco de la materia **Vehículos No Tripulados** (ESPOL), sobre el circuito F1TENTH del simulador **AutoDRIVE**. Cubre cuatro etapas: construcción de un mapa 2D del entorno mediante **SLAM** (SLAM Toolbox), planificación de una trayectoria global con **Dijkstra** desde el punto de spawn del vehículo hasta cerrar la vuelta completa, **suavizado** de esa trayectoria con una B-Spline cúbica paramétrica, y visualización del resultado final superpuesto sobre el mapa dentro del simulador.
-
 **Autor:** Giovanny Andrés Baño Peña  
 **Algoritmo de planificación asignado:** Dijkstra
 
@@ -9,8 +7,7 @@ Proyecto desarrollado en el marco de la materia **Vehículos No Tripulados** (ES
 
 ## Videos de evidencia
 
-- **Mapeo (SLAM en ejecución):** `<PEGAR ENLACE DE YOUTUBE>`
-- **Planificación, suavizado y visualización final:** `<PEGAR ENLACE DE YOUTUBE>`
+- **Mapeo (SLAM en ejecución):** `<https://youtu.be/yu67sYoOEOg>`
 
 ---
 
@@ -359,15 +356,3 @@ Esto levanta en conjunto: `nav2_map_server` sirviendo el mapa guardado en la eta
 
 ---
 
-## Licencia
-
-MIT. Todo el código de este repositorio es original; no incorpora librerías de planificación de terceros.
-
----
-
-## Referencias técnicas
-
-- [Documentación de SLAM Toolbox para ROS 2 Humble](https://docs.ros.org/en/humble/p/slam_toolbox/)
-- [Repositorio oficial de SLAM Toolbox](https://github.com/SteveMacenski/slam_toolbox)
-- [AutoDRIVE Ecosystem](https://autodrive-ecosystem.github.io/)
-- Dijkstra, E. W. (1959). *A note on two problems in connexion with graphs*. Numerische Mathematik, 1(1), 269–271.
