@@ -215,6 +215,7 @@ class DWAController(Node):
         self.lap_times = []
         self.best_lap = None
         self.finished = False
+        self.progress = 0.0     # avance neto (en waypoints) desde el ultimo cruce
 
         # --- Publicadores comunes -----------------------------------------
         self.pub_lap = self.create_publisher(Int32, "/lap_count", 10)
@@ -495,8 +496,21 @@ class DWAController(Node):
             self.race_start = self.lap_start = now
             self.get_logger().info("Cronometro iniciado.")
 
-        crossed = (self.prev_idx > 0.85 * self.N) and (self.idx < 0.15 * self.N)
-        if crossed and (now - self.lap_start) > self.min_lap_time:
+        # Avance neto en waypoints desde el ultimo cruce, no un booleano de
+        # "prev al final, actual al inicio": una oscilacion justo en la
+        # costura (p. ej. atascado en la parte mas angosta de la pista,
+        # que coincide con la linea de meta) cruzaba ese umbral varias
+        # veces en pocos segundos sin haber recorrido la vuelta completa,
+        # contando vueltas falsas de ~5-6 s.
+        delta = self.idx - self.prev_idx
+        if delta < -self.N / 2:
+            delta += self.N          # avanzo cruzando la costura
+        elif delta > self.N / 2:
+            delta -= self.N          # retrocedio cruzando la costura
+        self.progress = max(0.0, self.progress + delta)
+
+        if self.progress >= 0.95 * self.N and (now - self.lap_start) > self.min_lap_time:
+            self.progress -= self.N
             t = now - self.lap_start
             self.lap += 1
             self.lap_times.append(t)
