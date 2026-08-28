@@ -27,7 +27,9 @@ def main():
     ap.add_argument('--start', nargs=2, type=float, default=[0.744, 3.158],
                     metavar=('X', 'Y'), help='spawn del vehiculo (de /ips)')
     ap.add_argument('--goal', nargs=2, type=float, default=None, metavar=('X', 'Y'))
-    ap.add_argument('--checkpoints', type=int, default=10)
+    ap.add_argument('--checkpoints', type=int, default=24,
+                    help='con menos, la costura del lazo cerrado junto al '
+                         'spawn no pasa la escalera de suavizado (ver README)')
     ap.add_argument('--clearance', type=float, default=0.22,
                     help='holgura minima a pared [m]')
     ap.add_argument('--penalty', type=float, default=3.0,

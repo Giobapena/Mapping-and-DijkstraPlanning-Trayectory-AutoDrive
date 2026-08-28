@@ -22,8 +22,10 @@ from . import planning_utils as pu
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', default=pu.pkg_dir('waypoints'))
-    ap.add_argument('--step', type=float, default=0.30,
-                    help='separacion de los puntos de control [m]')
+    ap.add_argument('--step', type=float, default=1.00,
+                    help='separacion de los puntos de control [m] '
+                         '(0.30 ya no pasa la escalera de seguridad con '
+                         '--checkpoints 24; ver README)')
     args = ap.parse_args()
 
     cache_f = os.path.join(args.out, '_planner_cache.npz')
@@ -48,6 +50,15 @@ def main():
     print('[2] Escalera de suavizado B-Spline (se toma el primero ACEPTADO):')
     smooth_xy, yaw, curv, s_used, ncol, kmax = pu.smooth_path_safe(
         raw_xy, res, drivable, meta, H, closed, step_m=args.step)
+
+    if not (ncol == 0 and kmax <= pu.KAPPA_MAX):
+        raise SystemExit(
+            '[X] Ningun valor de suavizado cumplio las dos condiciones a la vez '
+            '(colisiones=%d, kappa_max=%.3f > %.3f). No se guarda un CSV invalido.\n'
+            '    Prueba: subir --step (control mas grueso), subir --checkpoints en '
+            'generate_trajectory (redondea la costura del lazo), o si nada funciona, '
+            'bajar --clearance con cuidado (reduce el margen de seguridad real).'
+            % (ncol, kmax, pu.KAPPA_MAX))
 
     n_raw_col = pu.count_collisions(raw_xy, drivable, meta, H)
     L_raw, L_smo = pu.path_length(raw_xy), pu.path_length(smooth_xy)

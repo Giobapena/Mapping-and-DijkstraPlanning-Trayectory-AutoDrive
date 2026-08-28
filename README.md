@@ -282,11 +282,11 @@ La consola imprime la tabla completa de la escalera, de modo que la decisión qu
 | `--mode` | `lap` | `lap` = vuelta completa; `point` = inicio → meta |
 | `--start X Y` | `0.744 3.158` | Spawn del vehículo, leído de `/autodrive/f1tenth_1/ips` |
 | `--goal X Y` | — | Meta (solo en modo `point`) |
-| `--checkpoints` | `10` | En cuántos tramos se divide la vuelta completa |
+| `--checkpoints` | `24` | En cuántos tramos se divide la vuelta completa (ver nota en 4.7: con menos, la costura del lazo cerrado junto al spawn no lograba pasar la escalera de suavizado) |
 | `--clearance` | `0.22 m` | Holgura mínima a pared exigida a la ruta |
 | `--penalty` | `3.0` | Cuánto se penaliza pasar cerca de una pared |
 | `--d-ref` | `0.60 m` | Distancia a partir de la cual ya no se penaliza |
-| `--step` | `0.30 m` | Separación de los puntos de control de la B-Spline |
+| `--step` | `1.00 m` | Separación de los puntos de control de la B-Spline |
 | `WHEELBASE` | `0.324 m` | Distancia entre ejes del F1TENTH |
 | `MAX_STEER` | `0.5236 rad` | Ángulo máximo de dirección (30°) |
 | `KAPPA_MAX` | `1.78 m⁻¹` | Curvatura máxima admisible, derivada de los dos anteriores |
@@ -324,11 +324,13 @@ Se verifica automáticamente que ningún waypoint —ni de la trayectoria cruda 
 | Componentes libres detectadas | 48 |
 | Pista seleccionada | 17 949 celdas (44.9 m²) |
 | Zona transitable (holgura ≥ 0.22 m) | 12 393 celdas |
-| Nodos expandidos por Dijkstra | 22 834 |
-| Nodos de la ruta cruda | 552 |
-| Longitud de la trayectoria cruda | 30.72 m |
-| Longitud de la trayectoria suavizada | `<COMPLETAR>` m |
-| Curvatura máxima | `<COMPLETAR>` m⁻¹ (límite: 1.78 m⁻¹) |
+| Nodos expandidos por Dijkstra | 22 676 |
+| Nodos de la ruta cruda | 556 |
+| Longitud de la trayectoria cruda | 31.25 m |
+| Longitud de la trayectoria suavizada | 29.59 m |
+| Curvatura máxima | 1.264 m⁻¹ (límite: 1.782 m⁻¹) |
+
+**Nota (retuning tras pruebas de la Parte 2):** con `--checkpoints 10` la escalera de suavizado nunca lograba las dos condiciones a la vez — la costura del lazo cerrado, justo en el punto de spawn, es el tramo más angosto de la pista (holgura real ≈0.20–0.25 m) y el tramo crudo llega y sale de ahí con un giro de ~90° entre dos celdas consecutivas. Ningún factor `s` global suavizaba esa esquina sin sacar la curva de la zona transitable en otro tramo. Subir a `--checkpoints 24` reparte mejor los tramos de Dijkstra alrededor de esa costura y sí permite un `s` que cumple ambas condiciones. También se corrigió un bug real en `smooth_path_safe`/`smooth_trajectory.py`: si ningún valor de la escalera cumplía las dos condiciones, el script igual guardaba el último evaluado (el CSV que causaba los choques) con solo un aviso en consola — ahora se **rechaza explícitamente** (`SystemExit`) en vez de guardar una trayectoria inválida.
 | Colisiones (cruda / suavizada) | 0 / 0 |
 
 ---

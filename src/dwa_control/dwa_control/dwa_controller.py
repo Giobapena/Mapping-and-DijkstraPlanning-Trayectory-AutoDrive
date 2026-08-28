@@ -104,7 +104,7 @@ class DWAController(Node):
         p("steering_sign", 1.0)
 
         # --- Ventana dinamica ---------------------------------------------
-        p("v_min", 0.5)
+        p("v_min", 0.0)          # 0 = puede frenar/parar; >0 nunca permite detenerse
         p("v_max", 2.0)
         p("w_max", 3.5)
         p("accel_max", 4.0)
@@ -140,6 +140,11 @@ class DWAController(Node):
         p("min_lap_time", 3.0)
         p("results_csv", "~/dwa_lap_times.csv")
 
+        # --- Diagnostico / seguridad ---------------------------------------
+        p("diag_period", 20)         # cada cuantos ciclos se imprime el estado
+        p("stall_speed", 0.08)       # v por debajo de esto cuenta como "detenido"
+        p("stall_timeout", 1.5)      # s detenido pidiendo avance -> frena y avisa
+
         g = lambda n: self.get_parameter(n).value
         self.L = g("wheelbase")
         self.max_steer = g("max_steer")
@@ -172,6 +177,10 @@ class DWAController(Node):
         self.backend_req = str(g("sim_backend")).lower()
         self.ns_req = g("vehicle_ns")
         self.rate = g("control_rate")
+        self.diag_period = max(1, int(g("diag_period")))
+        self.stall_speed = g("stall_speed")
+        self.stall_timeout = g("stall_timeout")
+        self.stall_since = None
 
         # --- Trayectoria ---------------------------------------------------
         csv_file = find_csv(g("path_csv"))
@@ -473,8 +482,9 @@ class DWAController(Node):
         self._free = int(np.isfinite(cost).sum())
         self._dmax = float(dmin.max())
         if not np.isfinite(cost).any():
+            # Nada libre: frena de verdad, sin piso de v_min (emergencia)
             i = int(np.argmax(dmin))          # la menos mala, despacio
-            return float(max(self.v_min, 0.4 * V[i])), float(W[i])
+            return float(0.4 * V[i]), float(W[i])
         i = int(np.argmin(cost))
         return float(V[i]), float(W[i])
 
@@ -539,7 +549,7 @@ class DWAController(Node):
             return
         v_cmd, w_cmd = self.dwa_plan()
         self.diag += 1
-        if self.diag % 50 == 0:
+        if self.diag % self.diag_period == 0:
             lid = float(np.linalg.norm(self.obs, axis=1).min()) if len(self.obs) else -1
             cte = float(np.hypot(self.path[self.idx, 0] - self.x,
                                  self.path[self.idx, 1] - self.y))
@@ -578,7 +588,7 @@ class DWAController(Node):
         v_cmd = max(self.v_min, v_cmd)
 
         self.diag += 1
-        if self.diag % 20 == 0:
+        if self.diag % self.diag_period == 0:
             cte = float(np.hypot(self.path[self.idx, 0] - self.x,
                                  self.path[self.idx, 1] - self.y))
             self.get_logger().info(
@@ -606,6 +616,7 @@ class DWAController(Node):
 
     def send(self, v_cmd, delta, brake=False):
         delta = float(self.steer_sign * delta)
+        self._check_stall(v_cmd, brake)
         if self.backend == "gym":
             m = AckermannDriveStamped()
             m.header.stamp = self.get_clock().now().to_msg()
@@ -631,6 +642,28 @@ class DWAController(Node):
         self.last_thr = thr
         self.pub_thr.publish(Float32(data=thr))
         self.pub_str.publish(Float32(data=float(delta / self.max_steer)))
+
+    def _check_stall(self, v_cmd, brake):
+        """Avisa si se pide avanzar pero la velocidad medida no responde:
+        el vehiculo esta empotrado contra algo que el LiDAR no ve (p. ej.
+        muy cerca, filtrado por obs_min_range) o quedo atascado."""
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if brake or v_cmd < self.stall_speed:
+            self.stall_since = None
+            return
+        if self.v < self.stall_speed:
+            if self.stall_since is None:
+                self.stall_since = now
+            elif now - self.stall_since > self.stall_timeout:
+                self.get_logger().warn(
+                    f"ATASCADO: se pide v_cmd={v_cmd:.2f} m/s pero v medida="
+                    f"{self.v:.2f} m/s desde hace {now - self.stall_since:.1f} s. "
+                    f"Probable colision fuera del rango que ve el LiDAR "
+                    f"(obs_min_range={self.obs_min_range:.2f} m). Revisa/reposiciona "
+                    f"el vehiculo en el simulador.",
+                    throttle_duration_sec=3.0)
+        else:
+            self.stall_since = None
 
     def publish_global_path(self):
         m = Path()

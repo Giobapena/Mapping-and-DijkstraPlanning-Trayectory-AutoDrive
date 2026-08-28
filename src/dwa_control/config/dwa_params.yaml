@@ -14,7 +14,10 @@ dwa_controller:
     steering_sign: 1.0          # -1.0 si el auto gira al reves
 
     # ---------------- Ventana dinamica ----------------
-    v_min: 0.6
+    # v_min > 0 le impedia frenar/detenerse por completo: al quedar con el
+    # morro pegado a una pared seguia obligado a pedir avance y se atascaba
+    # sin salida. v_min: 0.0 deja "parar" como opcion valida.
+    v_min: 0.0
     v_max: 2.0
     w_max: 3.5
     accel_max: 4.0
@@ -30,8 +33,13 @@ dwa_controller:
     # pursuit geometrico (pure_follow) que ignora el LiDAR; se dejo probado
     # y es mas rapido/estable porque la ruta global ya es libre de colision,
     # pero para esta entrega el default es DWA real.
-    w_path: 12.0
-    w_goal: 1.0
+    # w_path=12 vs w_goal=1 hacia dejaba "quedarse quieto" como opcion de
+    # minimo costo (una trayectoria que no avanza tiene desviacion promedio
+    # minima respecto a la ruta cercana) una vez que v_min=0 permitio
+    # elegir parar. Se rebalancea para que avanzar hacia el objetivo pese
+    # tanto como pegarse a la ruta.
+    w_path: 5.0
+    w_goal: 5.0
     w_obs: 0.5
     w_head: 3.0
     w_speed: 0.3
@@ -40,6 +48,15 @@ dwa_controller:
     lookahead_max: 1.20
     obs_max_range: 4.0
     lidar_stride: 3
+    # 0.40 (default del codigo) filtraba como "autorretorno" una pared real
+    # a 0.145 m que dejo el auto atascado (el DWA quedaba ciego a ella y
+    # seguia pidiendo avanzar). range_min del LiDAR es 0.06 m; 0.10 deja
+    # margen para ruido del sensor sin ocultar obstaculos reales cercanos.
+    obs_min_range: 0.10
+    # true = una trayectoria que choca queda vetada (costo infinito) en vez
+    # de solo penalizada; combinado con v_min: 0.0 esto le da al DWA una
+    # salida real (frenar) en vez de escoger "la menos mala" que igual choca.
+    obs_hard: true
 
     # ---------------- Control longitudinal ----------------
     throttle_kp: 0.25
