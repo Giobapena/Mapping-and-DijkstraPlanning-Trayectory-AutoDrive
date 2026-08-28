@@ -532,20 +532,8 @@ Definidos en `src/dwa_control/config/dwa_params.yaml`.
 | Métrica | Valor |
 |---|---|
 | Vuelta de prueba registrada | 40.373 s (`~/dwa_lap_times.csv`, tuning con `pure_follow`) |
-| Prueba 1 — 10 vueltas sin colisión (tiempo total) | `<COMPLETAR>` |
+| Prueba 1 — 10 vueltas sin colisión (tiempo total) | `<(https://youtu.be/W5N8sDrkYPQ)>` |
 | Prueba 2 — vuelta más rápida | `<COMPLETAR>` |
 
 ---
 
-## 7. Entregables
-
-| Archivo | Contenido |
-|---|---|
-| `src/global_planner/maps/F1tenth_Map.pgm` / `.yaml` | Mapa de ocupación (Parte A) |
-| `src/global_planner/waypoints/dijkstra_waypoints.csv` | Waypoints de la ruta cruda (`x, y`) |
-| `src/global_planner/waypoints/dijkstra_waypoints_smooth.csv` | Waypoints suavizados (`x, y, yaw, curvature`) |
-| `src/global_planner/waypoints/dijkstra_search.gif` | Animación de la expansión de Dijkstra |
-| `src/global_planner/waypoints/comparacion_crudo_vs_suavizado.png` | Comparación visual cruda vs. suavizada |
-| `src/global_planner/waypoints/curvatura.png` | Perfil de curvatura frente al límite cinemático |
-| `src/dwa_control/dwa_control/dwa_controller.py` | Nodo de control DWA (Parte 2) |
-| `~/dwa_lap_times.csv` | Tiempos por vuelta, mejor y promedio (se genera al ejecutar) |
