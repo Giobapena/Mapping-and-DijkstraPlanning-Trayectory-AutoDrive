@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>dwa_control</name>
+  <version>1.0.0</version>
+  <description>Seguimiento de trayectorias con DWA en AutoDRIVE F1TENTH</description>
+  <maintainer email="gio@espol.edu.ec">Giovanny Bano Pena</maintainer>
+  <license>MIT</license>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

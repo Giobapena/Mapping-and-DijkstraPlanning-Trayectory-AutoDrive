@@ -1,0 +1,53 @@
+dwa_controller:
+  ros__parameters:
+    # ---------------- Entradas ----------------
+    # "auto": el nodo detecta solo los topicos del simulador.
+    sim_backend: "auto"
+    path_csv: "~/Mapping-and-DijkstraPlanning-Trayectory-AutoDrive/src/global_planner/waypoints/dijkstra_waypoints_smooth.csv"
+    control_rate: 20.0
+
+    # ---------------- Vehiculo (F1TENTH) ----------------
+    wheelbase: 0.324
+    max_steer: 0.5236
+    robot_radius: 0.16
+    lidar_offset_x: 0.10
+    steering_sign: 1.0          # -1.0 si el auto gira al reves
+
+    # ---------------- Ventana dinamica ----------------
+    v_min: 0.6
+    v_max: 2.0
+    w_max: 3.5
+    accel_max: 4.0
+    dw_max: 6.0
+    v_samples: 9
+    w_samples: 21
+    predict_time: 1.0
+    sim_dt: 0.10
+
+    # ---------------- Pesos de la funcion de costo ----------------
+    # w_obs > 0 activa la busqueda DWA completa (dwa_plan: ventana dinamica +
+    # evasion por LiDAR). Con w_obs = 0.0 el nodo cae a un fallback de pure
+    # pursuit geometrico (pure_follow) que ignora el LiDAR; se dejo probado
+    # y es mas rapido/estable porque la ruta global ya es libre de colision,
+    # pero para esta entrega el default es DWA real.
+    w_path: 12.0
+    w_goal: 1.0
+    w_obs: 0.5
+    w_head: 3.0
+    w_speed: 0.3
+    lookahead_min: 0.55
+    lookahead_gain: 0.25
+    lookahead_max: 1.20
+    obs_max_range: 4.0
+    lidar_stride: 3
+
+    # ---------------- Control longitudinal ----------------
+    throttle_kp: 0.25
+    throttle_ki: 0.35
+    v_full_init: 8.0            # se autocalibra en marcha
+    brake_gain: 0.5
+
+    # ---------------- Vueltas ----------------
+    total_laps: 10
+    min_lap_time: 3.0
+    results_csv: "~/dwa_lap_times.csv"

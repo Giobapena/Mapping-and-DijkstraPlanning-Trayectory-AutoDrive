@@ -1,13 +1,15 @@
 # Mapeo y Planificación Global de Trayectorias en AutoDRIVE — Dijkstra + Suavizado B-Spline
 
 **Autor:** Giovanny Andrés Baño Peña  
-**Algoritmo de planificación asignado:** Dijkstra
+**Algoritmo de planificación asignado (Parte 1):** Dijkstra  
+**Controlador asignado (Parte 2):** DWA (Dynamic Window Approach) — Grupo DWA
 
 ---
 
 ## Videos de evidencia
 
 - **Mapeo (SLAM en ejecución):** `<https://youtu.be/yu67sYoOEOg>`
+- **Seguimiento y control con DWA** (vehículo recorriendo la pista sin chocar + terminal con contador de vueltas y cronómetro por vuelta): `<PEGAR ENLACE DE YOUTUBE>`
 
 ---
 
@@ -69,35 +71,46 @@ source ~/Mapping-and-DijkstraPlanning-Trayectory-AutoDrive/install/setup.bash
 ```
 ├── img/                                        <- Imágenes usadas en este README
 └── src/
-    └── global_planner/                         <- Único paquete ROS 2 (ament_python)
+    ├── global_planner/                         <- Parte 1: mapeo + Dijkstra + B-Spline
+    │   ├── package.xml
+    │   ├── setup.py
+    │   ├── setup.cfg
+    │   ├── resource/global_planner
+    │   ├── config/
+    │   │   ├── mapper_params_online_async.yaml   <- Parámetros de SLAM Toolbox
+    │   │   └── slam_mapping.rviz                 <- RViz para el mapeo en vivo
+    │   ├── launch/
+    │   │   └── trajectory_visualization.launch.py
+    │   ├── rviz/
+    │   │   └── trajectory.rviz                   <- RViz para la visualización final
+    │   ├── maps/
+    │   │   ├── F1tenth_Map.pgm                   <- ENTREGABLE Parte A
+    │   │   └── F1tenth_Map.yaml
+    │   ├── waypoints/                            <- ENTREGABLES Parte B
+    │   │   ├── dijkstra_waypoints.csv                trayectoria cruda
+    │   │   ├── dijkstra_waypoints_smooth.csv         trayectoria suavizada
+    │   │   ├── trayectoria_cruda.png
+    │   │   ├── trayectoria_suavizada.png
+    │   │   ├── comparacion_crudo_vs_suavizado.png
+    │   │   ├── curvatura.png
+    │   │   └── dijkstra_search.gif
+    │   └── global_planner/                       <- Módulo Python del paquete
+    │       ├── planning_utils.py                 <- Núcleo: mapa, Dijkstra, B-Spline
+    │       ├── generate_trajectory.py            <- Etapa 1: ruta cruda
+    │       ├── smooth_trajectory.py              <- Etapa 2: suavizado
+    │       ├── generate_gif.py                   <- Etapa 3: animación de la búsqueda
+    │       └── global_path_publisher.py          <- Nodo ROS 2 de visualización
+    └── dwa_control/                             <- Parte 2: seguimiento y control (DWA)
         ├── package.xml
         ├── setup.py
         ├── setup.cfg
-        ├── resource/global_planner
+        ├── resource/dwa_control
         ├── config/
-        │   ├── mapper_params_online_async.yaml   <- Parámetros de SLAM Toolbox
-        │   └── slam_mapping.rviz                 <- RViz para el mapeo en vivo
+        │   └── dwa_params.yaml                   <- Parámetros del controlador
         ├── launch/
-        │   └── trajectory_visualization.launch.py
-        ├── rviz/
-        │   └── trajectory.rviz                   <- RViz para la visualización final
-        ├── maps/
-        │   ├── F1tenth_Map.pgm                   <- ENTREGABLE Parte A
-        │   └── F1tenth_Map.yaml
-        ├── waypoints/                            <- ENTREGABLES Parte B
-        │   ├── dijkstra_waypoints.csv                trayectoria cruda
-        │   ├── dijkstra_waypoints_smooth.csv         trayectoria suavizada
-        │   ├── trayectoria_cruda.png
-        │   ├── trayectoria_suavizada.png
-        │   ├── comparacion_crudo_vs_suavizado.png
-        │   ├── curvatura.png
-        │   └── dijkstra_search.gif
-        └── global_planner/                       <- Módulo Python del paquete
-            ├── planning_utils.py                 <- Núcleo: mapa, Dijkstra, B-Spline
-            ├── generate_trajectory.py            <- Etapa 1: ruta cruda
-            ├── smooth_trajectory.py              <- Etapa 2: suavizado
-            ├── generate_gif.py                   <- Etapa 3: animación de la búsqueda
-            └── global_path_publisher.py          <- Nodo ROS 2 de visualización
+        │   └── dwa_control.launch.py
+        └── dwa_control/
+            └── dwa_controller.py                 <- Nodo único: DWA + control + vueltas
 ```
 
 ---
@@ -343,7 +356,186 @@ Esto levanta en conjunto: `nav2_map_server` sirviendo el mapa guardado en la eta
 
 ---
 
-## 6. Entregables
+## 6. Segunda Parte — Seguimiento de trayectorias y control (DWA)
+
+Proyecto del segundo parcial. El paquete `dwa_control` implementa un único nodo ROS 2 (`dwa_controller`) que carga la trayectoria suavizada generada en la Parte 1 (`dijkstra_waypoints_smooth.csv`) y controla el vehículo con **Dynamic Window Approach**: en cada ciclo de control muestrea un abanico de comandos `(v, ω)` físicamente alcanzables, simula hacia adelante la trayectoria que produciría cada uno, y elige el que minimiza un costo que combina seguir la ruta global, avanzar hacia un punto objetivo, alinear el rumbo y evitar los obstáculos que reporta el LiDAR.
+
+### 6.1 Descripción del enfoque
+
+**Ventana dinámica.** En cada ciclo (`control_rate` Hz) se acota el espacio de comandos admisibles a los que el vehículo puede alcanzar en un paso de control, dado su estado actual `(v, ω)`:
+
+```
+v ∈ [max(v_min, v − a_max·dt),  min(v_max, v + a_max·dt)]
+ω ∈ [max(−ω_max, ω − dω_max·dt),  min(ω_max, ω + dω_max·dt)]
+```
+
+Como el F1TENTH es Ackermann y no diferencial, además se descartan combinaciones que ningún volante podría producir: para cada `v` muestreada, el máximo `ω` físicamente posible es `ω_kin(v) = v·tan(δ_max)/L` (modelo de bicicleta). Los `w_samples` valores de `ω` se reparten como fracciones de `ω_kin(v)` entre −1 y 1, no de forma independiente de `v`, así el abanico completo (`v_samples × w_samples` combinaciones) es siempre cinemáticamente realizable.
+
+**Simulación hacia adelante.** Cada par `(v, ω)` se integra `predict_time / sim_dt` pasos con un modelo unicycle simple (`θ += ω·dt`, `x += v·cos(θ)·dt`, `y += v·sin(θ)·dt`), generando una trayectoria candidata completa, no solo un punto final.
+
+**Función de costo.** Cada trayectoria candidata se evalúa con cinco términos, normalizados a `[0, 1]` (min-máx sobre el abanico) y combinados con pesos configurables:
+
+| Término | Qué mide | Peso |
+|---|---|---|
+| `c_path` | Distancia media de la trayectoria simulada a una ventana local de la ruta global | `w_path` |
+| `c_goal` | Distancia del punto final de la trayectoria a un punto objetivo *lookahead* sobre la ruta (`lookahead_min + lookahead_gain·v`, acotado por `lookahead_max`) | `w_goal` |
+| `c_head` | Error de rumbo entre el heading final de la trayectoria y la tangente de la ruta en ese punto | `w_head` |
+| `c_obs` | Inverso de la distancia mínima a los puntos del LiDAR (huella de dos círculos: eje trasero y eje delantero) | `w_obs` |
+| `c_speed` | `(v_max − v)/v_max`, favorece velocidades altas | `w_speed` |
+
+```
+costo = w_path·norm(c_path) + w_goal·norm(c_goal) + w_head·norm(c_head)
+      + w_obs·norm(c_obs)   + w_speed·norm(c_speed)
+```
+
+Con `obs_hard: false` (default) las trayectorias que rozan un obstáculo no se descartan de plano —se penalizan con `+5`—, porque la ruta global ya se planificó libre de colisiones (Parte 1) y el LiDAR sirve como margen de seguridad adicional, no como único criterio; con `obs_hard: true` se vetan (costo infinito) y, si ninguna trayectoria queda libre, el nodo frena progresivamente eligiendo la de mayor holgura. Se elige el comando de mínimo costo y se convierte de `(v, ω)` a ángulo de dirección Ackermann con `δ = atan2(ω·L, v)`, saturado a `±max_steer`.
+
+> **Nota de diseño:** con `w_obs = 0.0` el nodo se salta por completo `dwa_plan()` y usa en su lugar `pure_follow()`, un seguimiento geométrico tipo *pure pursuit* que ignora el LiDAR. Se dejó implementado porque, al ser la ruta global ya libre de colisiones, resultó más rápido y estable en las pruebas — pero **no es DWA**. El `dwa_params.yaml` de este repositorio deja `w_obs: 0.5` para que el modo de carrera por defecto sea DWA real (búsqueda con evasión por LiDAR activa), que es el algoritmo asignado a este grupo.
+
+### 6.2 Detección automática del simulador
+
+El nodo no asume un backend fijo: al arrancar sondea `ros2 topic list` una vez por segundo (`detect()`) y decide entre dos modos según lo que encuentre:
+
+- **AutoDRIVE** (`sim_backend: auto|autodrive`): topics `.../throttle_command` y `.../steering_command` (`std_msgs/Float32`), pose por `.../ips` (`geometry_msgs/Point`) + `.../imu` (`sensor_msgs/Imu`), o `nav_msgs/Odometry` si no hay IPS/IMU.
+- **f1tenth_gym_ros** (`sim_backend: auto|gym`): `/drive` (`ackermann_msgs/AckermannDriveStamped`) + `/odom`.
+
+Esto permite probar y afinar el controlador en `f1tenth_gym` (más rápido de iterar, sin abrir Unity) y correrlo sin cambiar una línea de código en AutoDRIVE para la competencia.
+
+### 6.3 Estructura del código
+
+**Nodo:** `dwa_controller` (clase `DWAController`, en `dwa_control/dwa_control/dwa_controller.py`).
+
+| Suscripciones (autodetectadas) | Tipo | Uso |
+|---|---|---|
+| `.../lidar` o `/scan` | `sensor_msgs/msg/LaserScan` | Nube de obstáculos para `dwa_plan()` |
+| `.../ips` + `.../imu` (AutoDRIVE) | `geometry_msgs/msg/Point`, `sensor_msgs/msg/Imu` | Posición y orientación del vehículo |
+| `.../odom` (AutoDRIVE sin IPS, o f1tenth_gym) | `nav_msgs/msg/Odometry` | Pose y velocidad |
+| `.../speed` (AutoDRIVE, opcional) | `std_msgs/msg/Float32` | Velocidad medida, si está disponible |
+
+| Publicaciones | Tipo | Uso |
+|---|---|---|
+| `.../throttle_command`, `.../steering_command` (AutoDRIVE) | `std_msgs/msg/Float32` | Comando de tracción y dirección `[-1, 1]` |
+| `/drive` (f1tenth_gym) | `ackermann_msgs/msg/AckermannDriveStamped` | Velocidad y ángulo de dirección físicos |
+| `/lap_count` | `std_msgs/msg/Int32` | Vuelta actual completada |
+| `/lap_time` | `std_msgs/msg/Float32` | Tiempo de la última vuelta |
+| `/global_path` | `nav_msgs/msg/Path` (QoS *transient local*) | Trayectoria que sigue el nodo, para RViz |
+
+Funciones principales: `dwa_plan()` (ventana dinámica + costo, sección 6.1), `pure_follow()` (fallback geométrico), `nearest_index()` (waypoint más cercano, ventana local con rescate por búsqueda global si el error supera 3 m), `local_goal()` / `local_path_window()` (transforman la ruta al frame del vehículo), `check_direction()` (invierte la ruta si su sentido va contrario al del vehículo al arrancar, y fija el waypoint 0 como línea de meta en el punto de spawn), `update_laps()` y `report()` (contador y cronómetro, sección 6.5), y `send()` (control longitudinal, sección 6.4).
+
+### 6.4 Control longitudinal (solo AutoDRIVE)
+
+AutoDRIVE no recibe una velocidad en m/s sino un comando de tracción adimensional `[-1, 1]`, cuya ganancia real (m/s por unidad de tracción) no se conoce de antemano y no es lineal. El nodo la estima en línea: cada ciclo con velocidad medible actualiza `v_full` (velocidad a tracción máxima estimada) por suavizado exponencial a partir de `v / última_tracción`, y calcula el comando con un PI sobre el error de velocidad:
+
+```
+tracción = v_cmd / v_full  +  kp_thr·(v_cmd − v)  +  ∫ ki_thr·(v_cmd − v)
+```
+
+con el término integral saturado (anti-windup) a `±0.5`. En `f1tenth_gym_ros` no hace falta: el mensaje `AckermannDriveStamped` ya acepta velocidad y ángulo físicos directamente.
+
+### 6.5 Contador de vueltas y cronómetro
+
+`update_laps()` usa el índice del waypoint más cercano (`idx`) sobre la ruta ya orientada por `check_direction()` (waypoint 0 = línea de meta, en el punto de spawn). Se cuenta una vuelta cuando `idx` cruza de más allá del 85 % de la ruta a menos del 15 %, y han pasado al menos `min_lap_time` segundos desde el cruce anterior (anti-rebote). Cada vuelta:
+
+- Se imprime en la terminal de ROS 2: `VUELTA n/N | Tiempo: … s | Mejor: … s | Total: … s`.
+- Se publica en `/lap_count` y `/lap_time`.
+- Al completar `total_laps`, `report()` imprime el resumen final y escribe `results_csv` (por defecto `~/dwa_lap_times.csv`) con el tiempo de cada vuelta, la mejor y el promedio — evidencia exigida por la Parte B de la rúbrica. Si el nodo se interrumpe antes (`Ctrl+C`) con vueltas ya registradas, igual genera el reporte.
+
+Ejemplo de `dwa_lap_times.csv`:
+
+```csv
+vuelta,tiempo_s
+1,40.373
+mejor,40.373
+promedio,40.373
+```
+
+### 6.6 Instrucciones de instalación
+
+`dwa_control` vive en el mismo workspace que `global_planner` (ver sección 1.3) y comparte sus dependencias de sistema. Compilar ambos:
+
+```bash
+cd ~/Mapping-and-DijkstraPlanning-Trayectory-AutoDrive
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+```
+
+Si se va a probar contra `f1tenth_gym_ros` en vez de AutoDRIVE, instalar además:
+
+```bash
+sudo apt install -y ros-humble-ackermann-msgs
+```
+
+### 6.7 Instrucciones de ejecución (AutoDRIVE)
+
+```bash
+# Terminal 1 — Puente Unity <-> ROS 2 (requiere el venv de autodrive_ws)
+cd ~/autodrive_ws
+source /opt/ros/humble/setup.bash && source venv/bin/activate && source install/setup.bash
+export PYTHONUNBUFFERED=1
+ros2 launch autodrive_f1tenth simulator_bringup_headless.launch.py
+
+# Terminal 2 — Simulador AutoDRIVE (mapa por defecto del simulador)
+cd ~/Downloads/AutoDRIVE_Sim
+./"AutoDRIVE Simulator.x86_64"
+#   IP Address: 127.0.0.1   |   Port Number: 4567
+#   Driving Mode: Autonomous
+
+# Terminal 3 — Nodo de control DWA (carga la trayectoria de la Parte 1 y conduce)
+source /opt/ros/humble/setup.bash
+source ~/autodrive_ws/install/setup.bash
+source ~/Mapping-and-DijkstraPlanning-Trayectory-AutoDrive/install/setup.bash
+ros2 launch dwa_control dwa_control.launch.py v_max:=2.0 total_laps:=10
+```
+
+El nodo detecta solo los tópicos del simulador, encuentra el CSV de trayectoria más reciente si no se indica uno explícito, orienta la ruta según hacia dónde mira el vehículo al arrancar, y empieza a controlar. Para ver la trayectoria y el vehículo en RViz, abrir en una terminal aparte el mismo `trajectory_visualization.launch.py` de la Parte 1 (sección 5) — `dwa_controller` también publica `/global_path`.
+
+Argumentos de línea de comandos útiles:
+
+```bash
+# Trayectoria distinta a la de la Parte 1
+ros2 launch dwa_control dwa_control.launch.py path_csv:=/ruta/a/otro.csv
+
+# Vuelta rápida (Prueba 2): menos vueltas, velocidad máxima más alta
+ros2 launch dwa_control dwa_control.launch.py v_max:=3.0 total_laps:=3
+
+# Cualquier parámetro individual, vía --ros-args
+ros2 run dwa_control dwa_controller --ros-args --params-file src/dwa_control/config/dwa_params.yaml -p w_obs:=0.0
+```
+
+### 6.8 Parámetros ajustables
+
+| Parámetro | Default | Qué controla |
+|---|---|---|
+| `path_csv` | CSV suavizado de la Parte 1 | Trayectoria a seguir |
+| `sim_backend` | `auto` | `auto` \| `autodrive` \| `gym` |
+| `control_rate` | 20 Hz | Frecuencia del bucle de control |
+| `v_min` / `v_max` | 0.6 / 2.0 m/s | Rango de velocidad de la ventana dinámica |
+| `w_max` / `dw_max` | 3.5 rad/s / 6.0 rad/s² | Velocidad angular máxima y su aceleración |
+| `accel_max` | 4.0 m/s² | Aceleración lineal máxima admitida |
+| `v_samples` / `w_samples` | 9 / 21 | Resolución del abanico DWA |
+| `predict_time` / `sim_dt` | 1.0 s / 0.10 s | Horizonte y paso de la simulación hacia adelante |
+| `w_path`, `w_goal`, `w_head`, `w_obs`, `w_speed` | 12 / 1 / 3 / 0.5 / 0.3 | Pesos de la función de costo (sección 6.1) |
+| `obs_hard` | `false` | `true` = LiDAR veta trayectorias; `false` = solo penaliza |
+| `lookahead_min/gain/max` | 0.55 / 0.25 / 1.20 m | Distancia del punto objetivo, crece con la velocidad |
+| `robot_radius` | 0.16 m | Radio de colisión usado contra el LiDAR |
+| `total_laps` | 10 | Vueltas antes de generar el reporte final |
+| `min_lap_time` | 3.0 s | Anti-rebote del contador de vueltas |
+| `results_csv` | `~/dwa_lap_times.csv` | Dónde se guardan los tiempos |
+
+Definidos en `src/dwa_control/config/dwa_params.yaml`.
+
+### 6.9 Resultados
+
+| Métrica | Valor |
+|---|---|
+| Vuelta de prueba registrada | 40.373 s (`~/dwa_lap_times.csv`, tuning con `pure_follow`) |
+| Prueba 1 — 10 vueltas sin colisión (tiempo total) | `<COMPLETAR>` |
+| Prueba 2 — vuelta más rápida | `<COMPLETAR>` |
+
+---
+
+## 7. Entregables
 
 | Archivo | Contenido |
 |---|---|
@@ -353,6 +545,5 @@ Esto levanta en conjunto: `nav2_map_server` sirviendo el mapa guardado en la eta
 | `src/global_planner/waypoints/dijkstra_search.gif` | Animación de la expansión de Dijkstra |
 | `src/global_planner/waypoints/comparacion_crudo_vs_suavizado.png` | Comparación visual cruda vs. suavizada |
 | `src/global_planner/waypoints/curvatura.png` | Perfil de curvatura frente al límite cinemático |
-
----
-
+| `src/dwa_control/dwa_control/dwa_controller.py` | Nodo de control DWA (Parte 2) |
+| `~/dwa_lap_times.csv` | Tiempos por vuelta, mejor y promedio (se genera al ejecutar) |
